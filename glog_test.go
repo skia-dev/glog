@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	stdLog "log"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -368,6 +369,53 @@ func TestRollover(t *testing.T) {
 	}
 	if info.nbytes >= *logMaxSize {
 		t.Errorf("file size was not reset: %d", info.nbytes)
+	}
+}
+
+func TestLogID(t *testing.T) {
+	var err error
+
+	// Output logs into a custom directory.
+	testLogDir := filepath.Join(os.TempDir(), "TestLogID")
+	_ = os.MkdirAll(testLogDir, 0700)
+	defer os.RemoveAll(testLogDir)
+	defer func(previous []string) { logDirs = previous }(logDirs)
+	logDirs = []string{testLogDir}
+
+	Info("x") // Be sure we have an existing file we can rollover to use a LogID.
+	info, ok := logging.file[infoLog].(*syncBuffer)
+	if !ok {
+		t.Fatal("info wasn't created")
+	}
+	if err != nil {
+		t.Fatalf("info has initial error: %v", err)
+	}
+
+	// Set the LogID.
+	defer func(previous string) { *logID = previous }(*logID)
+	*logID = "testing123"
+
+	// Force a rollover so that a new log file is created with the LogID.
+	Info(strings.Repeat("x", int(*logMaxSize)))
+	if err != nil {
+		t.Fatalf("info has error after big write: %v", err)
+	}
+	fname0 := info.file.Name()
+	if !strings.HasSuffix(fname0, *logID) {
+		t.Errorf("file %s did not end with the provided LogID %s", fname0, *logID)
+	}
+
+	// Force more rollovers so that new log files are created with the LogID
+	// and incrementing numbers at the end.
+	for i := 1; i < 10; i++ {
+		Info(strings.Repeat("x", int(*logMaxSize)))
+		if err != nil {
+			t.Fatalf("info has error after big write: %v", err)
+		}
+		fname1 := info.file.Name()
+		if !strings.HasSuffix(fname1, fmt.Sprintf("%s.%d", *logID, i)) {
+			t.Errorf("file %s did not end with expected suffix %s", fname1, fmt.Sprintf("%s.%d", *logID, i))
+		}
 	}
 }
 

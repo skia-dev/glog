@@ -40,6 +40,9 @@ var logDir = flag.String("log_dir", "", "If non-empty, write log files in this d
 // logMaxSize is the maximum size of a log file in bytes.
 var logMaxSize = flag.Uint64("log_max_size", 50*1024*1024, "Maximum size of a log file in bytes")
 
+// If non-empty, overrides the timestamp and pid in the log name.
+var logID = flag.String("log_id", "", "If non-empty, use the provided ID instead of the timestamp and pid.")
+
 func createLogDirs() {
 	if *logDir != "" {
 		logDirs = append(logDirs, *logDir)
@@ -81,18 +84,28 @@ func shortHostname(hostname string) string {
 // logName returns a new log file name containing tag, with start time t, and
 // the name for the symlink for tag.
 func logName(tag string, t time.Time) (name, link string) {
-	name = fmt.Sprintf("%s.%s.%s.log.%s.%04d%02d%02d-%02d%02d%02d.%d",
+	name = fmt.Sprintf("%s.%s.%s.log.%s",
 		program,
 		host,
 		userName,
-		tag,
-		t.Year(),
-		t.Month(),
-		t.Day(),
-		t.Hour(),
-		t.Minute(),
-		t.Second(),
-		pid)
+		tag)
+
+	// Do not append timestamp to end of log file if logID is provided.
+	if *logID != "" {
+		name = fmt.Sprintf("%s.%s",
+			name,
+			*logID)
+	} else {
+		name = fmt.Sprintf("%s.%04d%02d%02d-%02d%02d%02d.%d",
+			name,
+			t.Year(),
+			t.Month(),
+			t.Day(),
+			t.Hour(),
+			t.Minute(),
+			t.Second(),
+			pid)
+	}
 	return name, program + "." + tag
 }
 
@@ -111,6 +124,14 @@ func create(tag string, t time.Time) (f *os.File, filename string, err error) {
 	var lastErr error
 	for _, dir := range logDirs {
 		fname := filepath.Join(dir, name)
+		_, err := os.Stat(fname)
+		for fileSuffix := 1; err == nil; fileSuffix++ {
+			// If file already exists then append a number to the end till we get
+			// to a file that does not exist.
+			// This only happens if we use *logID and there is a rollover.
+			fname = filepath.Join(dir, fmt.Sprintf("%s.%d", name, fileSuffix))
+			_, err = os.Stat(fname)
+		}
 		f, err := os.Create(fname)
 		if err == nil {
 			symlink := filepath.Join(dir, link)

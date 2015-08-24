@@ -49,6 +49,9 @@
 //	-log_dir=""
 //		Log files will be written to this directory instead of the
 //		default temporary directory.
+//  -log_id=""
+//      The provided id will be used in log file names in place of timestamp and
+//      pid.
 //
 //	Other flags provide aids to debugging.
 //
